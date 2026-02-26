@@ -83,7 +83,7 @@ def AbstractSubdivision( n ):
         
     return subdivision
 
-def RelAbsSub(n , lockedFaces):
+def RelAbsSub(n , lockedFaces, Subs):
     '''Function for the relative abstract subdivision of a triangle
     
     Starts from the regular abstract subdivision, and removes the simplices that are not 
@@ -92,18 +92,11 @@ def RelAbsSub(n , lockedFaces):
     Params:
     n (int), either 2 or 2: the dimension of the simplex to subdivide
     lockedFaces (int): 1,2 or 3. Assumes the ordering [0,1] , [0,1] [1,2], all edges
+    Subs
     '''
     
     if n <= 1 or n > 3:
         raise ValueError("Dimension ", n, " is not supported") 
-
-    try:
-        Subs
-    except NameError:
-        Subs = {}
-
-        for i in range(2,4+1):
-            Subs[i] = AbstractSubdivision(i)
         
             
     def lockFace(subsimps, face):

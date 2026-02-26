@@ -7,15 +7,13 @@ import itertools
 from itertools import combinations
 import copy
 
-def subdivision( M, points ):
+from .abstract_subdivision import AbstractSubdivision, RelAbsSub
+
+def subdivision( M, points, Subs):
     
     ''' Docstring
     '''
 
-    '''
-    Assumes Subs has already been defined as a global variable, as in
-    Subs = {i: AbstractSubdivision(i) for i in range(2,5)}
-    '''
     
     n_points = points.shape[0]
     
@@ -33,6 +31,9 @@ def subdivision( M, points ):
         SubPoints[i+n_points,:] = bary
         
     subdivision = []
+
+    # compute map for indices once
+    M_simplex_index = { tuple(sorted(simplex)): idx for idx, simplex in enumerate(M) }
         
     # iterate over all simplices
     for s, sigma in enumerate(M):
@@ -51,7 +52,8 @@ def subdivision( M, points ):
                 #print("This face is ",thisFace)
                 
                 if len(thisFace)>1:
-                    thisIndex = M.index(thisFace)
+                    #thisIndex = M.index(thisFace)
+                    thisIndex = M_simplex_index[tuple(sorted(thisFace))]
                     
                     #print("That is index ", thisIndex)
                 
@@ -69,22 +71,22 @@ def subdivision( M, points ):
     
     return subdivision, SubPoints
 
-def RelSub( M, pointsM, L, pointsL ):
+def RelSub( M, pointsM, L, pointsL, Subs ):
+    
+    ''' Docstring
+    '''
 
-    try:
-        Subs
-    except NameError:
-        Subs = {}
-
-        for i in range(2,4+1):
-            Subs[i] = AbstractSubdivision(i)
+    '''
+    Assumes Subs has already been defined as a global variable, as in
+    Subs = {i: AbstractSubdivision(i) for i in range(2,5)}
+    '''
 
     
     # generate abstract triangle cases
     RelSubs = {}
 
     for i in range(4):
-        RelSubs[(3,i)] = RelAbsSub( 3, i )
+        RelSubs[(3,i)] = RelAbsSub( 3, i, Subs )
     
     
     n_pointsL = pointsL.shape[0]
@@ -105,6 +107,8 @@ def RelSub( M, pointsM, L, pointsL ):
     subdivision = []
     
     subdivision.extend(L) # first, add all L
+
+    MminusL_simplex_index = { tuple(sorted(simplex)): idx for idx, simplex in enumerate(MminusL) }
     
     # iterate over all simplices in the difference
     for s, sigma in enumerate(MminusL):
@@ -174,7 +178,8 @@ def RelSub( M, pointsM, L, pointsL ):
                         
                         #print('    Barycenter')
                         
-                        thisIndex = MminusL.index(thisFace)
+                        #thisIndex = MminusL.index(thisFace)
+                        thisIndex = MminusL_simplex_index[tuple(sorted(thisFace))]
 
                         #print("    Goes to index ", thisIndex)
 
@@ -212,7 +217,8 @@ def RelSub( M, pointsM, L, pointsL ):
                         
                         #print('    Barycenter')
                         
-                        thisIndex = MminusL.index(thisFace)
+                        #thisIndex = MminusL.index(thisFace)
+                        thisIndex = MminusL_simplex_index[tuple(sorted(thisFace))]
 
                         #print("    Goes to index ", thisIndex)
 
@@ -233,7 +239,7 @@ def RelSub( M, pointsM, L, pointsL ):
         
     return subdivision, SubPoints
 
-def tightSupp( L , pointsL, M, pointsM ):
+def tightSupp( L , pointsL, M, pointsM, Subs ):
     ''' Assuming L < M is a subcomplex of M, compute the "tight" supplement of L in M, 
     that is the set of simplices in (M,L \cup L_out)' that do not have any vertex in L.
     For our current case L_out is empty, so this reduces to \sigma \in (M,L)' such that
@@ -249,16 +255,16 @@ def tightSupp( L , pointsL, M, pointsM ):
     Lout = [ simp for simp in M if all( x not in L0 for x in simp)  ]
 
     
-    relsubs, newpoints = RelSub(M, pointsM, L, pointsL)
+    relsubs, newpoints = RelSub(M, pointsM, L, pointsL, Subs)
     
     # Find which vertices in sM are vertices of L
     
     SubComplexIndices = []
     for i in range(newpoints.shape[0]):
-        
-        if any( all(newpoints[i,:] == pointsL[j,:]) for j in range(pointsL.shape[0]) ):
+        for j in range(pointsL.shape[0]):
+            if np.allclose(newpoints[i, :], pointsL[j, :], atol=1e-12):
             
-            SubComplexIndices.append(i)
+                SubComplexIndices.append(i)
             
     RelSupPoints = newpoints.copy()
     
