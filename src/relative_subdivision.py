@@ -66,7 +66,7 @@ def subdivision( M, points, Subs):
             
             #print("So we add simplex ", newSimplex)    
                 
-            subdivision.append( newSimplex )
+            subdivision.append( sorted(newSimplex) )
             
     
     return subdivision, SubPoints
@@ -74,11 +74,6 @@ def subdivision( M, points, Subs):
 def RelSub( M, pointsM, L, pointsL, Subs ):
     
     ''' Docstring
-    '''
-
-    '''
-    Assumes Subs has already been defined as a global variable, as in
-    Subs = {i: AbstractSubdivision(i) for i in range(2,5)}
     '''
 
     
@@ -90,6 +85,8 @@ def RelSub( M, pointsM, L, pointsL, Subs ):
     
     
     n_pointsL = pointsL.shape[0]
+
+    L_faces = { tuple(sorted(s)) for s in L }
     
     MminusL = [ x for x in M if x not in L ] # M minus L
     NVerts = pointsL.shape[0] + len(MminusL) # How many vertices in the relative sub
@@ -109,20 +106,27 @@ def RelSub( M, pointsM, L, pointsL, Subs ):
     subdivision.extend(L) # first, add all L
 
     MminusL_simplex_index = { tuple(sorted(simplex)): idx for idx, simplex in enumerate(MminusL) }
+
+    L_edges = { tuple(sorted(s)) for s in L if len(s)==2 }
     
     # iterate over all simplices in the difference
     for s, sigma in enumerate(MminusL):
+
+        ## added
+        key = tuple(sorted(sigma))
+        if key in L_faces:
+            continue
         
         l = len(sigma)
         #print('* Simplex to subdivide is ', sigma)
         
         if l == 3: # if triangle
             # find how many and which edges of sigma are in L
-            flag1 = ( [sigma[0],sigma[1]] in L)
-
-            flag2 = ( [sigma[1],sigma[2]] in L)
+            flag1 = tuple(sorted([sigma[0],sigma[1]])) in L_edges
             
-            flag3 = ( [sigma[0],sigma[2]] in L)
+            flag2 = tuple(sorted([sigma[1],sigma[2]])) in L_edges
+            
+            flag3 = tuple(sorted([sigma[0],sigma[2]])) in L_edges
             
             nLocked = sum( [ 1 if x else 0 for x in [flag1, flag2, flag3] ] )
 
@@ -177,13 +181,25 @@ def RelSub( M, pointsM, L, pointsL, Subs ):
                     if len(thisFace)>1: # if it's not a vertex
                         
                         #print('    Barycenter')
+
+                        key = tuple(sorted(thisFace))
+                        if key not in MminusL_simplex_index:
+                            print("Face not in MminusL:", key)
+
+                        if key in L_faces:        # face in L
+                            newSimplex.extend(key)
+
+                        else:                     # face in M\L
+                            newSimplex.append(
+                                MminusL_simplex_index[key] + n_pointsL
+                            )
                         
                         #thisIndex = MminusL.index(thisFace)
-                        thisIndex = MminusL_simplex_index[tuple(sorted(thisFace))]
+                        #thisIndex = MminusL_simplex_index[tuple(sorted(thisFace))]
 
                         #print("    Goes to index ", thisIndex)
 
-                        newSimplex.append(thisIndex + n_pointsL)
+                        #newSimplex.append(thisIndex + n_pointsL)
                         
                         #print("    Translating to ", thisIndex+ n_pointsL)
 

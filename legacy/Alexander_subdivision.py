@@ -78,44 +78,6 @@ from gudhi import AlphaComplex as AC
 
 
 
-def tightSupp( L , pointsL, M, pointsM ):
-    ''' Assuming L < M is a subcomplex of M, compute the "tight" supplement of L in M, 
-    that is the set of simplices in (M,L \cup L_out)' that do not have any vertex in L.
-    For our current case L_out is empty, so this reduces to \sigma \in (M,L)' such that
-    no vertex of \sigma is a simplex of L (eq. has a vertex in L').
-    
-    '''
-    
-    
-    # compute vertices of L
-    L0 = list(set( [ vert for sigma in L for vert in sigma ] ))
-    
-    # Compute Lout (IT WILL BE EMPTY!)
-    Lout = [ simp for simp in M if all( x not in L0 for x in simp)  ]
 
-    
-    relsubs, newpoints = RelSub(M, pointsM, L, pointsL)
-    
-    # Find which vertices in sM are vertices of L
-    
-    SubComplexIndices = []
-    for i in range(newpoints.shape[0]):
-        
-        if any( all(newpoints[i,:] == pointsL[j,:]) for j in range(pointsL.shape[0]) ):
-            
-            SubComplexIndices.append(i)
-            
-    RelSupPoints = newpoints.copy()
-    
-    # keep simplices if they are not in the smaller complex
-    Lbar = [ m for m in relsubs if all([s not in SubComplexIndices for s in m ])  ]
-    
-    # Add vertices to Lbar!
-    verticesLbar = [ [n] for n in range(newpoints.shape[0]) if n not in SubComplexIndices ] 
-    
-    Lbar = verticesLbar + Lbar
-            
-    
-    return Lbar, SubComplexIndices
 
 
