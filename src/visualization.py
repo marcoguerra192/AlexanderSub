@@ -29,11 +29,6 @@ def draw_2d_simplicial_complex(simplices, pos=None, return_pos=False, markedEdge
         return_pos: dict (default=False)
             If True returns the dictionary of positions for the 0-simplices.
             
-        References
-        ----------    
-        .. [1] I. Iacopini, G. Petri, A. Barrat & V. Latora (2018)
-               "Simplicial Models of Social Contagion".
-               arXiv preprint arXiv:1810.07031..
     """
 
     
@@ -45,15 +40,31 @@ def draw_2d_simplicial_complex(simplices, pos=None, return_pos=False, markedEdge
 
     #List of 2-simplices
     triangles = list(set(itertools.chain(*[[tuple(sorted((i, j, k))) for i, j, k in itertools.combinations(simplex, 3)] for simplex in simplices])))
+
+    # Auto-fit axes to content
+    all_x = [p[0] for p in pos.values()] if isinstance(pos, dict) else [p[0] for p in pos]
+    all_y = [p[1] for p in pos.values()] if isinstance(pos, dict) else [p[1] for p in pos]
     
-    fig, ax = plt.subplots(figsize=(7,7))
-    ax.set_xlim([0, 270])      
-    ax.set_ylim([0, 270])
-    ax.set_xlim([-1, 10])      
-    ax.set_ylim([-1, 10])
-    ax.get_xaxis().set_ticks([])  
+    x_min, x_max = min(all_x), max(all_x)
+    y_min, y_max = min(all_y), max(all_y)
+    pad_x = 0.1 * (x_max - x_min) if x_max > x_min else 0.5
+    pad_y = 0.1 * (y_max - y_min) if y_max > y_min else 0.5
+
+    fig, ax = plt.subplots(figsize=(8,8))
+    ax.set_xlim(x_min - pad_x, x_max + pad_x)
+    ax.set_ylim(y_min - pad_y, y_max + pad_y)
+    ax.set_aspect('equal')   # so circles look like circles
+    ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
     ax.axis('on')
+    
+    # ax.set_xlim([0, 270])      
+    # ax.set_ylim([0, 270])
+    # ax.set_xlim([-4, 4])      
+    # ax.set_ylim([-4, 4])
+    # ax.get_xaxis().set_ticks([])  
+    # ax.get_yaxis().set_ticks([])
+    # ax.axis('on')
        
     if pos is None:
         # Creating a networkx Graph from the edgelist
@@ -93,7 +104,7 @@ def draw_2d_simplicial_complex(simplices, pos=None, return_pos=False, markedEdge
     for i in range(len(pos)):
         (x, y) = pos[i]
         #  radius was 0.1
-        circ = plt.Circle([ x, y ], radius = 0.01, zorder = 4, lw=0.5,
+        circ = plt.Circle([ x, y ], radius=0.005 * max(x_max - x_min, y_max - y_min), zorder = 4, lw=0.5,
                           edgecolor = 'Black', facecolor = u'#ff7f0e')
         ax.add_patch(circ);
         
@@ -128,12 +139,7 @@ def draw_Sup(simplices, subSimplices, supSimplices, subComplexIndices,  pos, pos
         
         return_pos: dict (default=False)
             If True returns the dictionary of positions for the 0-simplices.
-            
-        References
-        ----------    
-        .. [1] I. Iacopini, G. Petri, A. Barrat & V. Latora (2018)
-               "Simplicial Models of Social Contagion".
-               arXiv preprint arXiv:1810.07031..
+
     """
 
     
@@ -145,15 +151,36 @@ def draw_Sup(simplices, subSimplices, supSimplices, subComplexIndices,  pos, pos
 
     #List of 2-simplices
     triangles = list(set(itertools.chain(*[[tuple(sorted((i, j, k))) for i, j, k in itertools.combinations(simplex, 3)] for simplex in simplices])))
+
+    # Auto-fit axes to content
+    all_x = [p[0] for p in pos.values()] if isinstance(pos, dict) else [p[0] for p in pos]
+    all_y = [p[1] for p in pos.values()] if isinstance(pos, dict) else [p[1] for p in pos]
     
-    fig, ax = plt.subplots(figsize=(7,7))
-    ax.set_xlim([0, 270])      
-    ax.set_ylim([0, 270])
-    ax.set_xlim([-1, 10])      
-    ax.set_ylim([-1, 10])
-    ax.get_xaxis().set_ticks([])  
+    # posSub too 
+    all_x += [p[0] for p in posSub.values()] if isinstance(posSub, dict) else [p[0] for p in posSub]
+    all_y += [p[1] for p in posSub.values()] if isinstance(posSub, dict) else [p[1] for p in posSub]
+
+    
+    x_min, x_max = min(all_x), max(all_x)
+    y_min, y_max = min(all_y), max(all_y)
+    pad_x = 0.1 * (x_max - x_min) if x_max > x_min else 0.5
+    pad_y = 0.1 * (y_max - y_min) if y_max > y_min else 0.5
+
+    fig, ax = plt.subplots(figsize=(8,8))
+    ax.set_xlim(x_min - pad_x, x_max + pad_x)
+    ax.set_ylim(y_min - pad_y, y_max + pad_y)
+    ax.set_aspect('equal')   # so circles look like circles
+    ax.get_xaxis().set_ticks([])
     ax.get_yaxis().set_ticks([])
     ax.axis('on')
+    
+    # ax.set_xlim([0, 270])      
+    # ax.set_ylim([0, 270])
+    # ax.set_xlim([-1, 10])      
+    # ax.set_ylim([-1, 10])
+    # ax.get_xaxis().set_ticks([])  
+    # ax.get_yaxis().set_ticks([])
+    # ax.axis('on')
        
     if pos is None:
         # Creating a networkx Graph from the edgelist
@@ -184,7 +211,7 @@ def draw_Sup(simplices, subSimplices, supSimplices, subComplexIndices,  pos, pos
     for i in range(len(pos)):
         (x, y) = pos[i]
         #  radius was 0.1
-        circ = plt.Circle([ x, y ], radius = 0.01, zorder = 4, lw=0.5,
+        circ = plt.Circle([ x, y ], radius=0.005 * max(x_max - x_min, y_max - y_min), zorder = 4, lw=0.5,
                           edgecolor = 'Black', facecolor = 'Blue')
         ax.add_patch(circ);
      
@@ -222,7 +249,7 @@ def draw_Sup(simplices, subSimplices, supSimplices, subComplexIndices,  pos, pos
     for i in range(len(posSub)):
         (x, y) = posSub[i]
         #  radius was 0.1
-        circ = plt.Circle([ x, y ], radius = 0.01, zorder = 4, lw=0.5,
+        circ = plt.Circle([ x, y ], radius=0.005 * max(x_max - x_min, y_max - y_min), zorder = 4, lw=0.5,
                           edgecolor = 'Black', facecolor = 'Green')
         ax.add_patch(circ);
         
@@ -262,7 +289,8 @@ def draw_Sup(simplices, subSimplices, supSimplices, subComplexIndices,  pos, pos
         
         if excludedVerts is not None and i in excludedVerts:
 
-            Color = plt.cm.Oranges(0.6)
+            #Color = plt.cm.Oranges(0.6)
+            Color = plt.cm.Grays(0.6)
         else:
             Color = plt.cm.Reds(0.6)
                 
@@ -287,7 +315,7 @@ def draw_Sup(simplices, subSimplices, supSimplices, subComplexIndices,  pos, pos
             else:
                 Color = 'Red'
             
-            circ = plt.Circle([ x, y ], radius = 0.01, zorder = 4, lw=0.5,
+            circ = plt.Circle([ x, y ], radius=0.005 * max(x_max - x_min, y_max - y_min), zorder = 4, lw=0.5,
                               edgecolor = 'Black', facecolor = Color)
             ax.add_patch(circ);
      
