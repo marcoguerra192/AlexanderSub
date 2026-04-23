@@ -25,6 +25,7 @@ def subdivision( M, points, Subs):
     
     SubPoints[ 0 : n_points , : ] = points
     
+    
     for i in range(len(M)):
         
         bary = np.mean(points[M[i],:], axis=0)

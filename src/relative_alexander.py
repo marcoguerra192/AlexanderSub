@@ -5,7 +5,7 @@ from gudhi import AlphaComplex as AC
 
 from src.abstract_subdivision import AbstractSubdivision
 
-from src.relative_subdivision import subdivision, RelAbsSub, RelSub
+from src.relative_subdivision import subdivision, RelAbsSub, RelSub, RelSubGeneral, compute_Lout
 
 
 ### Relative subdivision
@@ -43,7 +43,9 @@ def compute_outer_boundary(sM):
     
     return marked_edges
 
-def compute_tight_supplement_NoLOut(relM, relPoints, pointsL):
+## This is Maunder's supplement
+
+def compute_supplement(relM, relPoints, pointsL):
     
     n_L_vertices = pointsL.shape[0]
     
@@ -87,6 +89,8 @@ def compute_tight_supplement(L, M, points_M, Subs):
     -------
     Ltilde : list of sorted lists of int
         The tight supplement.
+    sub_simplices: list of sorted lists of int
+         — the full relative derived complex (M, K)'
     sub_points : (n_M + |M setminus K with len>=2|, d) ndarray
         Vertex coordinates for the relative subdivision (M, K)'.
     L_vertex_indices : list of int
@@ -129,10 +133,30 @@ def compute_tight_supplement(L, M, points_M, Subs):
     # supplement functions (so connected_components can find isolated vertices).
     used_verts = {v for s in Ltilde for v in s}
     existing_verts = {s[0] for s in Ltilde if len(s) == 1}
-    isolated = [[v] for v in sorted(used_verts) if v not in existing_verts]
-    Ltilde = isolated + [s for s in Ltilde if len(s) > 1]
+    missing = [[v] for v in sorted(used_verts) if v not in existing_verts]
+    Ltilde = Ltilde + missing
 
-    return Ltilde, sub_points, L_vertex_indices, Lout_vertex_indices
+    # Every barycenter of an M\K simplex is a 0-simplex of tilde{L} (case (a) of the
+    # lemma). Some of these may already appear inside larger
+    # simplices of Ltilde; that's fine. Others are genuine isolated 0-simplices,
+    # representing a new connected component.
+    n_M = points_M.shape[0]
+    n_bary = sub_points.shape[0] - n_M
+    bary_zero_simplices = [[n_M + j] for j in range(n_bary)]
+
+    # Also every 0-simplex of L_out is a 0-simplex of tilde{L} (case (d) of the lemma).
+    # These were added verbatim by RelSubGeneral but double-check:
+    
+    Lout_zero_simplices = [[v] for v in Lout_vertex_indices]
+    
+    # Deduplicate against Ltilde's existing 0-simplices.
+    existing_zero = {s[0] for s in Ltilde if len(s) == 1}
+    extra_zero = [s for s in (bary_zero_simplices + Lout_zero_simplices) 
+                  if s[0] not in existing_zero]
+
+    Ltilde = Ltilde + extra_zero
+
+    return Ltilde, sub_simplices, sub_points, L_vertex_indices, Lout_vertex_indices
 
 
 # Union-find structure to compute the connected components
@@ -184,14 +208,15 @@ def discard_boundary_components(CC, markedEdges):
     return valid, excluded
 
 # This case for when there is no Lout
-def extract_representatives_relative_NoLOut(validCC, MminusL, pointsL, M):
+def extract_representatives_relative(validCC, MminusL, pointsL, M):
     
     offset = pointsL.shape[0]
     
     edges = sorted([s for s in M if len(s) == 2])
     edge_index = {tuple(e): i for i,e in enumerate(edges)}
     
-    repr_edges = []
+    repr_edges = [] # store edges that are representative cycles (for plotting)
+    cycles = [] # store the repr cycles individually
     
     for comp in validCC:
         
@@ -210,14 +235,13 @@ def extract_representatives_relative_NoLOut(validCC, MminusL, pointsL, M):
                 boundary_count[edge_index[tuple(sorted(e))]] += 1
         
         boundary_mod2 = boundary_count % 2
+
+        new_cycle = [ edges[i] for i in range(len(edges)) if boundary_mod2[i] == 1 ]
+        repr_edges.extend(new_cycle)
+        cycles.append(new_cycle)
         
-        repr_edges.extend([
-            edges[i]
-            for i in range(len(edges))
-            if boundary_mod2[i] == 1
-        ])
     
-    return repr_edges
+    return repr_edges, cycles
 
 
 # 4. Components-to-cycles map for the tight case, general Lout

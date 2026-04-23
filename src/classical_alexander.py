@@ -42,7 +42,7 @@ def compute_outer_boundary(sM):
 
 #### The classical supplement
 
-def compute_supplement(sM, sPointsM, sL, sPointsL):
+def compute_supplement_full(sM, sPointsM, sL, sPointsL):
     """
     Assuming L < M is a subcomplex of M, and sL and sM are their subdivisions,
     compute the supplement of L in M using full subdivision.
@@ -125,14 +125,15 @@ def discard_boundary_components(CC, markedEdges):
     
     return valid, excluded
 
-def extract_representatives(validCC, M, sM, pointsM):
+def extract_representatives_full(validCC, M, sM, pointsM):
     
     offset = pointsM.shape[0]
     
     edges = sorted([s for s in M if len(s) == 2])
     edge_index = {tuple(e): i for i,e in enumerate(edges)}
     
-    repr_edges = []
+    repr_edges = [] # store edges that are representative cycles (for plotting)
+    cycles = [] # store the repr cycles individually
     
     for comp in validCC:
         
@@ -151,11 +152,9 @@ def extract_representatives(validCC, M, sM, pointsM):
                 boundary_count[edge_index[tuple(sorted(e))]] += 1
         
         boundary_mod2 = boundary_count % 2
-        
-        repr_edges.extend([
-            edges[i]
-            for i in range(len(edges))
-            if boundary_mod2[i] == 1
-        ])
+
+        new_cycle = [ edges[i] for i in range(len(edges)) if boundary_mod2[i] == 1 ]
+        repr_edges.extend(new_cycle)
+        cycles.append(new_cycle)
     
-    return repr_edges
+    return repr_edges, cycles
