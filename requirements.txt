@@ -1,0 +1,8 @@
+## REQUIREMENTS
+
+numpy
+matplotlib
+itertools
+copy
+scipy
+gudhi
