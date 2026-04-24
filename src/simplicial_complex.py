@@ -68,8 +68,7 @@ class SimplicialComplex:
         self._simplices_by_dim = {}
         self._cumulative = [0]
 
-        # dimension of the complex - increased as simplices are read
-        self.dim = 0
+        
 
         # treat 0-simplices separately
         self._simplices_by_dim[0] = np.arange(self.n_points, dtype=np.int32).reshape(-1, 1)
@@ -79,6 +78,10 @@ class SimplicialComplex:
         max_dim = max((len(s) for s in simplices), default=1) - 1
         assert max_dim <= self.ambient_dim
 
+        # dimension of the complex - increased as simplices are read
+        self.dim = 0
+
+        
         # divide by dimension
         for k in range(1, self.ambient_dim + 1):
             simp_of_dim_k = [ s for s in simplices if len(s) == k+1 ]
@@ -90,6 +93,8 @@ class SimplicialComplex:
                 
             self._cumulative.append(self._cumulative[-1] + len(simp_of_dim_k))
 
+        # Store total simplices
+        self.n_simplices = self._cumulative[-1]
 
         ### LOOKUP dictionaries - Check whether it's worth making O(dim)
         ## instead of O(1), with a large memory saving
