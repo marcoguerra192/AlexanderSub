@@ -36,6 +36,7 @@ The contract is as follows:
 """
 
 import numpy as np
+from itertools import combinations
 from .simplicial_complex import SimplicialComplex
 
 
@@ -223,4 +224,125 @@ class Inclusion:
         small_points = M.points[vertex_flats]
         small = SimplicialComplex(small_points, small_simplices)
     
+        return Inclusion(small, M, vertex_map)
+
+    def discard_boundary_components(self, parent_subdivision, components):
+        """ Partition the components of `self.small` into those that touch the
+        boundary of `parent_subdivision.parent` (= |M|) and those that don't.
+        
+        `self` is expected to be the supplement inclusion: small ⊆ materialized
+        subdivision, where `parent_subdivision` is the Subdivision whose
+        materialized complex is self.large.
+        
+        Parameters
+        ----------
+        parent_subdivision : Subdivision
+            The subdivision that produced self.large; needed to look up vertex
+            provenance.
+        components : list of np.ndarray
+            Connected components of self.small, as returned by
+            self.small.connected_components().
+        
+        Returns
+        -------
+        valid : list of np.ndarray
+            Components that do NOT touch the boundary of |M|.
+        excluded : list of np.ndarray
+            Components that touch the boundary.
+        """
+        M = parent_subdivision.parent
+        provenance = parent_subdivision.materialized_provenance
+    
+        # Compute the boundary subcomplex of M as a set of flat indices.
+        boundary_codim1 = M.boundary()  # codim-1 simplices on ∂|M|
+        boundary_M_flats = set()
+        boundary_M_vertices = set()
+        for face in boundary_codim1:
+            face_sorted = tuple(sorted(int(v) for v in face))
+            # The face itself
+            boundary_M_flats.add(M._simplex_to_flat[face_sorted])
+            # Its vertices
+            for v in face_sorted:
+                boundary_M_vertices.add(v)
+                boundary_M_flats.add(M.flat_from_dim_index(0, v))
+    
+        # Translate the supplement's vertex indices into the materialized 
+        # subdivision's vertex indices.
+        supp_to_materialized = self.vertex_map  # length self.small.n_points
+    
+        # Mark which supplement-vertices are on ∂|M| via provenance.
+        is_boundary_supp_vertex = np.zeros(self.small.n_points, dtype=bool)
+        for supp_v in range(self.small.n_points):
+            materialized_v = int(supp_to_materialized[supp_v])
+            kind, ident = provenance[materialized_v]
+            if kind == 'parent_vertex':
+                if int(ident) in boundary_M_vertices:
+                    is_boundary_supp_vertex[supp_v] = True
+            elif kind == 'barycenter_of':
+                if int(ident) in boundary_M_flats:
+                    is_boundary_supp_vertex[supp_v] = True
+            else:
+                raise RuntimeError(f"Unknown provenance kind: {kind}")
+    
+        # Partition components.
+        valid = []
+        excluded = []
+        for comp in components:
+            if any(is_boundary_supp_vertex[int(v)] for v in comp):
+                excluded.append(comp)
+            else:
+                valid.append(comp)
+    
+        return valid, excluded
+
+        
+    def complement_complex(self):
+        """ Build the closure of the top-dim simplices of M not in L, as an
+        Inclusion(complement_complex ⊆ M).
+        
+        The complement complex is the smallest subcomplex of M containing every
+        top-dim simplex of M that is not in L. By construction it is closed
+        under taking faces.
+        
+        For the manifold case (L is at most codim-1 in M), this is the natural
+        "set-difference" complex used for the cheap (no-subdivision) pipeline.
+        
+        Returns
+        -------
+        Inclusion(complement_complex ⊆ self.large)
+        """
+        M = self.large
+        top_dim = M.dim
+        
+        # Top-dim M-simplices NOT in L.
+        top_simplices_not_in_L = []
+        for row in M.simplices_in_dim[top_dim]:
+            m_simp = tuple(sorted(int(v) for v in row))
+            flat = M._simplex_to_flat[m_simp]
+            if not self._simplex_mask[flat]:
+                top_simplices_not_in_L.append(m_simp)
+        
+        # Closure: every face of every top-simplex.
+        closure_faces = set()
+        for sigma in top_simplices_not_in_L:
+            closure_faces.add(sigma)
+            for k in range(1, len(sigma)):
+                for face in combinations(sigma, k):
+                    closure_faces.add(face)
+        
+        # Vertices appearing in the closure.
+        closure_vertices = sorted({int(v) for face in closure_faces for v in face})
+        
+        # Build the small complex: reindex M's vertices to local indices.
+        m_to_local = {int(v): i for i, v in enumerate(closure_vertices)}
+        
+        small_simplices = []
+        for face in closure_faces:
+            if len(face) >= 2:  # 0-simplices implicit in points
+                small_simplices.append(sorted(m_to_local[int(v)] for v in face))
+        
+        small_points = M.points[np.array(closure_vertices, dtype=np.int32)]
+        small = SimplicialComplex(small_points, small_simplices)
+        
+        vertex_map = np.array(closure_vertices, dtype=np.int32)
         return Inclusion(small, M, vertex_map)

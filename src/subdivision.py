@@ -48,8 +48,8 @@ from src_old.relative_subdivision import RelSubGeneral as _legacy_relsubgeneral
 
 class Subdivision:
 
-    def __init__(self, parent, inclusion, materialized, materialized_provenance,
-                 chains_by_length):
+    def __init__(self, parent, inclusion, base_inclusion, materialized,
+             materialized_provenance, chains_by_length):
         """ Direct constructor. Best to use the classmethods instead.
 
         Parameters
@@ -72,6 +72,7 @@ class Subdivision:
         """
         self.parent = parent
         self.inclusion = inclusion
+        self.base_inclusion = base_inclusion
         self.materialized = materialized
         self.materialized_provenance = materialized_provenance
         self.chains_by_length = chains_by_length
@@ -116,6 +117,7 @@ class Subdivision:
         return cls(
             parent=M,
             inclusion=inclusion,
+            base_inclusion=inclusion, 
             materialized=materialized,
             materialized_provenance=provenance,
             chains_by_length=chains,
@@ -143,7 +145,9 @@ class Subdivision:
         #         "Subdivision.tight requires a non-trivial inclusion "
         #     )
         L_union_Lout_in_M = inclusion.L_union_Lout_in_M()
-        return cls.from_inclusion(L_union_Lout_in_M)
+        sub = cls.from_inclusion(L_union_Lout_in_M)
+        sub.base_inclusion = inclusion 
+        return sub
 
     # Introspection
 
@@ -170,6 +174,207 @@ class Subdivision:
         reimplemented to build a SimplicialComplex from chains directly.
         """
         return self.materialized
+
+    ####
+    # Computation of the supplement in abstract. Works for all cases.
+    ###
+
+    def supplement(self):
+        """ The supplement of L in self.materialized.
+        
+        The supplement is the subcomplex of the materialized subdivision M'
+        consisting of simplices whose vertices have no L-provenance, where:
+          - 'L-provenance' means provenance ('parent_vertex', v) with v in V(L),
+            OR provenance ('barycenter_of', f) with f a flat index of an L-simplex.
+        
+        The L referred to here is self.base_inclusion's small complex. For
+        barycentric and relative subdivisions, base_inclusion == inclusion.
+        For tight subdivisions, base_inclusion is the original L ⊆ M (NOT the
+        L ∪ L_out used internally for the relative subdivision step).
+        
+        Returns
+        -------
+        Inclusion
+            An inclusion (supplement ⊆ self.materialized).
+        """
+        base = self.base_inclusion
+        L_vertex_set = set(int(v) for v in base.vertex_map)
+        L_mask = base.simplex_mask  # boolean array over self.parent.n_simplices
+    
+        # Determine which vertices of materialized are "L-vertices".
+        materialized = self.materialized
+        is_L_vertex = np.zeros(materialized.n_points, dtype=bool)
+        for i in range(materialized.n_points):
+            kind, ident = self.materialized_provenance[i]
+            if kind == 'parent_vertex':
+                if int(ident) in L_vertex_set:
+                    is_L_vertex[i] = True
+            elif kind == 'barycenter_of':
+                if L_mask[int(ident)]:
+                    is_L_vertex[i] = True
+            else:
+                raise RuntimeError(f"Unknown provenance kind: {kind}")
+    
+        # The supplement's vertices are those NOT marked as L.
+        supplement_vertex_indices = np.nonzero(~is_L_vertex)[0].astype(np.int32)
+        supp_old_to_new = np.full(materialized.n_points, -1, dtype=np.int32)
+        supp_old_to_new[supplement_vertex_indices] = np.arange(
+            len(supplement_vertex_indices), dtype=np.int32
+        )
+    
+        # Collect supplement simplices: those whose vertices are all non-L.
+        supp_simplices = []
+        for k in range(1, materialized.dim + 1):
+            for row in materialized.simplices_in_dim[k]:
+                if all(not is_L_vertex[int(v)] for v in row):
+                    supp_simplices.append(sorted(int(supp_old_to_new[int(v)]) for v in row))
+    
+        # Materialize the supplement as a standalone SimplicialComplex.
+        supp_points = materialized.points[supplement_vertex_indices]
+        supp_complex = SimplicialComplex(supp_points, supp_simplices)
+    
+        # Inclusion: supp_complex ⊆ materialized, with vertex_map = supplement_vertex_indices.
+        return Inclusion(supp_complex, materialized, supplement_vertex_indices)
+
+
+    def representative_cycles(self, valid_components, supplement_inclusion):
+        """ Extract representative cycles in L from valid components of the
+        supplement.
+        
+        For each valid component, collects the top-dim simplices of self.parent
+        (= M) "associated" with the component, takes their Z/2 boundary, and
+        restricts to L's codim-1 simplices. The result is a Z/2 cycle in L for
+        each component.
+        
+        Two kinds of associated top-dim M-simplices:
+          (i)  M-triangles in M\\K whose barycenter (a vertex of self.materialized
+               with provenance ('barycenter_of', f)) belongs to the component.
+          (ii) M-triangles entirely in K (i.e., in L_out for the tight case)
+               whose vertices appear in the component as ('parent_vertex', v).
+               For tight subdivisions this means L_out triangles; for barycentric
+               and relative this case is empty (M\\K = M\\L there has no triangles
+               in K=L since L is at most 1-dimensional in our examples — but the
+               code handles it generically).
+        
+        Parameters
+        ----------
+        valid_components : list of np.ndarray
+            Components of the supplement, in supplement-vertex indices.
+        supplement_inclusion : Inclusion
+            The supplement-as-inclusion, returned by self.supplement().
+        
+        Returns
+        -------
+        cycles : list of list of tuple
+            For each component, the list of L-edges (as sorted tuples of
+            L-vertex indices) that form its representative cycle. Edges are
+            in L's vertex indexing (translated through base_inclusion.vertex_map).
+        """
+        M = self.parent
+        base = self.base_inclusion
+        provenance = self.materialized_provenance
+    
+        # L-edges as a set, in M's vertex indexing.
+        L_edge_flats_in_M = set()
+        if not base.is_trivial:
+            L = base.small
+            if L.dim >= 1:
+                for L_edge in L.simplices_in_dim[1]:
+                    m_edge = tuple(sorted(int(base.vertex_map[v]) for v in L_edge))
+                    L_edge_flats_in_M.add(M._simplex_to_flat[m_edge])
+    
+        # M-to-L vertex map for translating cycle edges back to L's vertex space.
+        m_to_L = base.m_to_l  # length M.n_points; -1 where M-vertex isn't in L
+    
+        # K-mask: simplices marked as "in the subcomplex used for the relative
+        # subdivision". This determines which top-dim M-simplices are in M\K
+        # (their barycenters appear in the materialized subdivision) vs in K
+        # (they appear verbatim, contributing parent_vertex entries).
+        K_mask = self.inclusion.simplex_mask  # NOT base.simplex_mask
+    
+        # Build adjacency: from supplement-vertex index -> provenance.
+        supp_to_provenance = {
+            supp_v: provenance[int(supplement_inclusion.vertex_map[supp_v])]
+            for supp_v in range(supplement_inclusion.small.n_points)
+        }
+    
+        cycles = []
+    
+        for comp in valid_components:
+            comp_set = set(int(v) for v in comp)
+    
+            # Collect associated top-dim M-simplices.
+            repr_top_simplices = set()  # set of flat indices in M
+    
+            # Type (i): M\K top-dim simplices whose barycenter is in this component.
+            for supp_v in comp:
+                kind, ident = supp_to_provenance[int(supp_v)]
+                if kind == 'barycenter_of':
+                    f = int(ident)
+                    # Only top-dim M-simplices contribute to the cycle's boundary.
+                    # (Barycenters of edges / lower-dim sit on the supplement but
+                    # their "boundary" is just their own vertices, which aren't
+                    # L-edges. Skip.)
+                    if M._flat_dim[f] == M.dim:
+                        repr_top_simplices.add(f)
+    
+            # Type (ii): K-side top-dim M-simplices wholly in this component.
+            # Triangle T is in K iff K_mask[flat_of_T]; it's in this component iff
+            # any of its vertices (translated to supplement-vertex indices via the
+            # supplement_inclusion's m_to_l) is in comp_set. Since T is connected,
+            # checking the first vertex suffices.
+            for f in range(M.n_simplices):
+                if M._flat_dim[f] != M.dim:
+                    continue
+                if not K_mask[f]:
+                    continue
+                sigma = M.simplex_by_flat_index(f)
+                # Look up sigma's first vertex in the materialized complex.
+                # Since K-simplices are added verbatim, their vertices appear as
+                # ('parent_vertex', v) in the provenance.
+                v0 = int(sigma[0])
+                # Find the supplement-vertex with provenance ('parent_vertex', v0).
+                # If v0 is in V(L), it won't be in the supplement (filtered out).
+                # If v0 is in V(L_out), it will be.
+                # Use supplement_inclusion's m_to_l, which goes
+                # (materialized vertex) -> (supplement vertex) or -1.
+                #
+                # First, find materialized index of vertex v0:
+                # It's a parent_vertex entry, so its materialized index = v0
+                # (by convention in the materialized output).
+                materialized_v0 = v0
+                supp_v0 = int(supplement_inclusion.m_to_l[materialized_v0])
+                if supp_v0 == -1:
+                    continue  # not in supplement (= in V(L))
+                if supp_v0 in comp_set:
+                    repr_top_simplices.add(f)
+    
+            # Take Z/2 boundary, restrict to L-edges.
+            boundary_count = {}
+            for f in repr_top_simplices:
+                sigma = M.simplex_by_flat_index(f)
+                sigma_sorted = sorted(int(v) for v in sigma)
+                # All codim-1 faces of sigma (= edges, for triangles)
+                for i in range(len(sigma_sorted)):
+                    face = tuple(sigma_sorted[:i] + sigma_sorted[i+1:])
+                    boundary_count[face] = boundary_count.get(face, 0) + 1
+    
+            cycle_edges_in_M = [face for face, cnt in boundary_count.items() if cnt % 2 == 1 ]
+
+            # Sanity: by Alexander duality, every cycle edge must be in L.
+            for face in cycle_edges_in_M:
+                assert M._simplex_to_flat[face] in L_edge_flats_in_M, \
+                    f"Cycle edge {face} is not in L — Alexander duality violated, bug upstream"
+    
+            # Translate cycle edges back to L's vertex indexing.
+            cycle_edges_in_L = []
+            for m_edge in cycle_edges_in_M:
+                l_edge = tuple(sorted(int(m_to_L[v]) for v in m_edge))
+                cycle_edges_in_L.append(l_edge)
+    
+            cycles.append(cycle_edges_in_L)
+    
+        return cycles
 
     # ----------------------------------------------------------------------
     # Consistency check between the two representations
